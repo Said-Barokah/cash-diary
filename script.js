@@ -303,42 +303,60 @@ async function switchToProfile(name) {
 }
 
 async function createNewProfile() {
-  const name = sanitizeProfileName(prompt("Nama profil baru (misal: nama Anda):") || "");
+  const typed = await showPromptDialog({
+    title: "Profil baru",
+    message: "Masukkan nama profil (misal: nama Anda).",
+    placeholder: "Nama profil",
+  });
+  const name = sanitizeProfileName(typed || "");
   if (!name) {
     populateProfileSelect(); // revert the <select> back to the active profile
     return;
   }
   const profiles = getProfiles();
   if (profiles.includes(name)) {
-    alert("Nama profil itu sudah ada. Pilih dari daftar, atau pakai nama lain.");
+    toast("Nama profil itu sudah ada. Pilih dari daftar, atau pakai nama lain.", "error");
     populateProfileSelect();
     return;
   }
   profiles.push(name);
   saveProfiles(profiles);
   await switchToProfile(name);
+  toast(`Profil "${name}" dibuat.`, "success");
 }
 
 async function deleteActiveProfile() {
   const profiles = getProfiles();
   if (profiles.length <= 1) {
-    alert("Tidak bisa menghapus satu-satunya profil yang ada.");
+    toast("Tidak bisa menghapus satu-satunya profil yang ada.", "error");
     return;
   }
-  if (!confirm(`Hapus profil "${activeProfile}" beserta semua transaksinya? Tindakan ini tidak bisa dibatalkan.`)) {
-    return;
-  }
+  const ok = await showConfirmDialog({
+    title: "Hapus profil?",
+    message: `Hapus profil "${activeProfile}" beserta semua transaksinya? Tindakan ini tidak bisa dibatalkan.`,
+    confirmText: "Hapus",
+    danger: true,
+  });
+  if (!ok) return;
   const removed = activeProfile;
   const remaining = profiles.filter((p) => p !== removed);
   saveProfiles(remaining);
   await deleteDBBlob(removed);
   await switchToProfile(remaining[0]);
+  toast(`Profil "${removed}" dihapus.`, "success");
 }
 
 async function initProfiles() {
   let profiles = getProfiles();
   if (profiles.length === 0) {
-    const name = sanitizeProfileName(prompt("Selamat datang! Siapa nama profil pertama Anda?") || "Utama");
+    const typed = await showPromptDialog({
+      title: "Selamat datang di CashDiary",
+      message: "Siapa nama profil pertama Anda?",
+      placeholder: "Nama profil",
+      defaultValue: "Utama",
+      confirmText: "Mulai",
+    });
+    const name = sanitizeProfileName(typed || "Utama");
     profiles = [name || "Utama"];
     saveProfiles(profiles);
     setActiveProfileName(profiles[0]);
@@ -610,10 +628,17 @@ function renderTable(rows) {
   tbody.querySelectorAll(".row-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = Number(btn.dataset.id);
-      if (!confirm("Hapus transaksi ini?")) return;
+      const ok = await showConfirmDialog({
+        title: "Hapus transaksi?",
+        message: "Transaksi ini akan dihapus permanen.",
+        confirmText: "Hapus",
+        danger: true,
+      });
+      if (!ok) return;
       deleteTransaction(id);
       await persist();
       refreshAll();
+      toast("Transaksi dihapus.", "success");
     });
   });
 }
@@ -674,9 +699,9 @@ async function importSQLiteFile(file) {
     db = newDb;
     await persist();
     refreshAll();
-    alert("Berhasil memuat data dari file .sqlite.");
+    toast("Berhasil memuat data dari file .sqlite.", "success");
   } catch (err) {
-    alert("Gagal membaca file ini sebagai database SQLite.");
+    toast("Gagal membaca file ini sebagai database SQLite.", "error");
     console.error(err);
   }
 }
@@ -715,7 +740,7 @@ async function main() {
     let category = document.getElementById("txCategory").value;
 
     if (!date || !amount || amount <= 0) {
-      alert("Tanggal dan jumlah harus diisi dengan benar.");
+      toast("Tanggal dan jumlah harus diisi dengan benar.", "error");
       return;
     }
     if (newCategoryInput) {
@@ -744,5 +769,5 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
-  alert("Gagal memuat aplikasi. Buka Console (F12) untuk detail.");
+  toast("Gagal memuat aplikasi. Buka Console (F12) untuk detail.", "error", 8000);
 });

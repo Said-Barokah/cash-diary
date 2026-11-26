@@ -17,6 +17,9 @@
   --series-6: #008a17; /* green */
   --series-7: #6a4ce2; /* violet */
   --series-8: #ec4647; /* red */
+
+  --status-good: #0aac23;
+  --status-critical: #dc3c3d;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -357,4 +360,118 @@ td.col-amount {
 @media (max-width: 520px) {
   .app-header { flex-direction: row; }
   .stat-value { font-size: 1.25rem; }
+}
+
+/* ---------- Toasts ---------- */
+
+.toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 1100;
+  width: 100%;
+  max-width: 360px;
+  padding: 0 16px;
+}
+
+.toast {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--text-primary);
+  color: var(--surface-1);
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  text-align: center;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-success {
+  background: var(--status-good);
+  color: #ffffff;
+}
+
+.toast-error {
+  background: var(--status-critical);
+  color: #ffffff;
+}
+
+/* ---------- Modals ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 11, 11, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 16px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.modal-backdrop.show {
+  opacity: 1;
+}
+
+.modal-box {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-radius: 14px;
+  padding: 22px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  transform: scale(0.96);
+  transition: transform 0.15s ease;
+}
+
+.modal-backdrop.show .modal-box {
+  transform: scale(1);
+}
+
+.modal-box h3 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+
+.modal-box p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.modal-input {
+  width: 100%;
+  margin-bottom: 18px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-danger {
+  background: var(--status-critical);
+  color: #ffffff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
 }
