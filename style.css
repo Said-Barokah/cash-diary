@@ -1,0 +1,360 @@
+:root {
+  color-scheme: light;
+  --surface-1:      #ffffff;
+  --page-plane:      #f9f9f9;
+  --text-primary:   #191919;
+  --text-secondary: #666666;
+  --gridline:       #e7e7e7;
+  --baseline:       #c2c2c2;
+  --border:         rgba(11,11,11,0.10);
+  --good:           #006c10;
+
+  --series-1: #257de0; /* blue   - Pemasukan */
+  --series-2: #f47230; /* orange - Pengeluaran */
+  --series-3: #00b894; /* aqua */
+  --series-4: #f2a600; /* yellow */
+  --series-5: #ee7fac; /* magenta */
+  --series-6: #008a17; /* green */
+  --series-7: #6a4ce2; /* violet */
+  --series-8: #ec4647; /* red */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --surface-1:      #191919;
+    --page-plane:      #0b0b0b;
+    --text-primary:   #efefef;
+    --text-secondary: #9c9c9c;
+    --gridline:       #303030;
+    --baseline:       #474747;
+    --border:         rgba(255,255,255,0.10);
+    --good:           #53c556;
+
+    --series-1: #338ced;
+    --series-2: #e76624;
+    --series-3: #00a888;
+    --series-4: #d28e05;
+    --series-5: #e24d8b;
+    --series-6: #0aac23;
+    --series-7: #9887ef;
+    --series-8: #eb6263;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1:      #191919;
+  --page-plane:      #0b0b0b;
+  --text-primary:   #efefef;
+  --text-secondary: #9c9c9c;
+  --gridline:       #303030;
+  --baseline:       #474747;
+  --border:         rgba(255,255,255,0.10);
+  --good:           #53c556;
+
+  --series-1: #338ced;
+  --series-2: #e76624;
+  --series-3: #00a888;
+  --series-4: #d28e05;
+  --series-5: #e24d8b;
+  --series-6: #0aac23;
+  --series-7: #9887ef;
+  --series-8: #eb6263;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.app {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-header h1 {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.profile-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+#profileSelect {
+  min-width: 140px;
+}
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.card h2 {
+  margin: 0 0 14px;
+  font-size: 1.05rem;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile-balance .stat-value {
+  color: var(--good);
+}
+
+.tx-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.field label {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+input, select, button {
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+input, select {
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--page-plane);
+  color: var(--text-primary);
+}
+
+.type-toggle {
+  gap: 10px;
+}
+
+.radio-pill {
+  position: relative;
+  cursor: pointer;
+}
+
+.radio-pill input {
+  position: absolute;
+  opacity: 0;
+}
+
+.radio-pill span {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.radio-pill input:checked + span {
+  background: var(--series-2);
+  border-color: var(--series-2);
+  color: #ffffff;
+}
+
+.radio-pill input[value="income"]:checked + span {
+  background: var(--series-1);
+  border-color: var(--series-1);
+}
+
+.btn-primary {
+  align-self: flex-start;
+  background: var(--series-1);
+  color: #ffffff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.file-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.filter-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 260px;
+}
+
+.empty-note {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-align: center;
+  margin: 10px 0 0;
+}
+
+.list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.list-header h2 { margin: 0; }
+
+.list-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+thead th {
+  text-align: left;
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--gridline);
+}
+
+tbody td {
+  padding: 10px;
+  border-bottom: 1px solid var(--gridline);
+  vertical-align: middle;
+}
+
+.col-amount {
+  text-align: right;
+}
+
+td.col-amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: #ffffff;
+}
+
+.type-badge.expense { background: var(--series-2); }
+.type-badge.income { background: var(--series-1); }
+
+.row-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.row-delete:hover {
+  color: var(--series-8);
+}
+
+.app-footer {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 520px) {
+  .app-header { flex-direction: row; }
+  .stat-value { font-size: 1.25rem; }
+}

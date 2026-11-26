@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CashDiary</title>
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+
+  <header class="app-header">
+    <div>
+      <h1>CashDiary</h1>
+      <p class="subtitle">Bensin, makan, jajan — catat semua di sini.</p>
+    </div>
+    <button id="themeToggle" class="btn-ghost" title="Ganti tema" aria-label="Ganti tema terang/gelap">🌙</button>
+  </header>
+
+  <section class="profile-bar">
+    <label for="profileSelect" class="profile-label">Profil</label>
+    <select id="profileSelect"></select>
+    <button id="deleteProfileBtn" class="btn-ghost" title="Hapus profil ini">Hapus profil</button>
+  </section>
+
+  <section class="summary-cards" id="summaryCards">
+    <div class="card stat-tile">
+      <span class="stat-label">Pemasukan</span>
+      <span class="stat-value" id="sumIncome">Rp 0</span>
+    </div>
+    <div class="card stat-tile">
+      <span class="stat-label">Pengeluaran</span>
+      <span class="stat-value" id="sumExpense">Rp 0</span>
+    </div>
+    <div class="card stat-tile stat-tile-balance">
+      <span class="stat-label">Saldo</span>
+      <span class="stat-value" id="sumBalance">Rp 0</span>
+    </div>
+  </section>
+
+  <section class="card form-card">
+    <h2>Tambah Transaksi</h2>
+    <form id="txForm" class="tx-form">
+      <div class="field-row type-toggle">
+        <label class="radio-pill">
+          <input type="radio" name="type" value="expense" checked />
+          <span>Pengeluaran</span>
+        </label>
+        <label class="radio-pill">
+          <input type="radio" name="type" value="income" />
+          <span>Pemasukan</span>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="txDate">Tanggal</label>
+          <input type="date" id="txDate" required />
+        </div>
+        <div class="field">
+          <label for="txAmount">Jumlah (Rp)</label>
+          <input type="number" id="txAmount" min="0" step="1" placeholder="0" required />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="txCategory">Kategori</label>
+          <select id="txCategory" required></select>
+        </div>
+        <div class="field">
+          <label for="txNewCategory">Kategori baru (opsional)</label>
+          <input type="text" id="txNewCategory" placeholder="Misal: Parkir" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="txNote">Catatan (opsional)</label>
+        <input type="text" id="txNote" placeholder="Misal: makan siang di warung" />
+      </div>
+
+      <button type="submit" class="btn-primary">Simpan Transaksi</button>
+    </form>
+  </section>
+
+  <section class="card filter-card">
+    <h2>Filter</h2>
+    <div class="filter-row">
+      <div class="field">
+        <label for="filterPreset">Periode</label>
+        <select id="filterPreset">
+          <option value="month" selected>Bulan ini</option>
+          <option value="lastmonth">Bulan lalu</option>
+          <option value="7d">7 hari terakhir</option>
+          <option value="30d">30 hari terakhir</option>
+          <option value="all">Semua</option>
+          <option value="custom">Kustom</option>
+        </select>
+      </div>
+      <div class="field custom-range" id="customRangeFrom" hidden>
+        <label for="filterFrom">Dari</label>
+        <input type="date" id="filterFrom" />
+      </div>
+      <div class="field custom-range" id="customRangeTo" hidden>
+        <label for="filterTo">Sampai</label>
+        <input type="date" id="filterTo" />
+      </div>
+      <div class="field">
+        <label for="filterCategory">Kategori</label>
+        <select id="filterCategory">
+          <option value="all">Semua kategori</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="charts-grid">
+    <div class="card chart-card">
+      <h2>Pengeluaran per Kategori</h2>
+      <div class="chart-wrap">
+        <canvas id="categoryChart"></canvas>
+      </div>
+      <p class="empty-note" id="categoryChartEmpty" hidden>Belum ada pengeluaran pada periode ini.</p>
+    </div>
+    <div class="card chart-card">
+      <h2>Pemasukan vs Pengeluaran (6 Bulan)</h2>
+      <div class="chart-wrap">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section class="card list-card">
+    <div class="list-header">
+      <h2>Daftar Transaksi</h2>
+      <div class="list-actions">
+        <button id="exportCsvBtn" class="btn-ghost">Export CSV</button>
+        <button id="exportDbBtn" class="btn-ghost">Export .sqlite</button>
+        <label class="btn-ghost file-label">
+          Import .sqlite
+          <input type="file" id="importDbInput" accept=".sqlite,.db" hidden />
+        </label>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="txTable">
+        <thead>
+          <tr>
+            <th>Tanggal</th>
+            <th>Tipe</th>
+            <th>Kategori</th>
+            <th>Catatan</th>
+            <th class="col-amount">Jumlah</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="txTableBody"></tbody>
+      </table>
+      <p class="empty-note" id="txEmpty" hidden>Belum ada transaksi pada periode ini.</p>
+    </div>
+  </section>
+
+  <footer class="app-footer">
+    <p>Data tersimpan di browser ini (IndexedDB). Gunakan Export/Import untuk backup atau pindah device.</p>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
