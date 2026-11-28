@@ -4,6 +4,12 @@
    styled to match CashDiary instead of looking like a system popup)
    ============================================================ */
 
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
 function ensureUiRoots() {
   if (!document.getElementById("toastRoot")) {
     const toastRoot = document.createElement("div");

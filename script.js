@@ -1,211 +1,155 @@
 /* ============================================================
-   Catatan Keuangan Harian
-   - Database: SQLite via sql.js (WebAssembly), persisted to IndexedDB
-   - Export/Import .sqlite file for backup / moving between devices
+   CashDiary — Mode Keluarga
+   - Database: Firebase Firestore (online, real-time)
+   - Data dikelompokkan per "kode keluarga": households/{KODE}/...
+   - Login: Firebase Anonymous Auth (tidak terlihat oleh pengguna)
    ============================================================ */
 
-const SQL_WASM_BASE = "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/";
-const IDB_NAME = "keuangan-db";
-const IDB_STORE = "files";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  doc,
+  addDoc,
+  deleteDoc,
+  onSnapshot,
+  getDocs,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const PROFILES_KEY = "kk-profiles";
-const ACTIVE_PROFILE_KEY = "kk-active-profile";
+/* ---------- GANTI dengan konfigurasi Firebase project Anda sendiri ----------
+   Didapat dari: Firebase Console -> Project settings -> Your apps -> (ikon </>) */
+const firebaseConfig = {
+  apiKey: "AIzaSyD3FNAkJLeUTEJCw5JcyO_b7fUzd6Uf7-E",
+  authDomain: "cashdiary-37d39.firebaseapp.com",
+  projectId: "cashdiary-37d39",
+  storageBucket: "cashdiary-37d39.firebasestorage.app",
+  messagingSenderId: "578788377567",
+  appId: "1:578788377567:web:ee53aa7b5e749697657a6a",
+};
+/* ------------------------------------------------------------------------- */
 
-let activeProfile = null;
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
 
-function idbKeyFor(profile) {
-  return `sqlite:${profile}`;
+const FAMILY_CODE_KEY = "cashdiary-family-code";
+const DEFAULT_CATEGORIES = [
+  ["Makan", "expense"],
+  ["Bensin/Transport", "expense"],
+  ["Jajan", "expense"],
+  ["Lainnya", "expense"],
+  ["Gaji", "income"],
+  ["Lainnya", "income"],
+];
+
+let familyCode = localStorage.getItem(FAMILY_CODE_KEY);
+let txCache = [];
+let catCache = [];
+let unsubTx = null;
+let unsubCat = null;
+
+/* ---------- Family code helpers ---------- */
+
+function generateFamilyCode(length = 8) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid confusion
+  const arr = new Uint32Array(length);
+  crypto.getRandomValues(arr);
+  let out = "";
+  for (let i = 0; i < length; i++) out += chars[arr[i] % chars.length];
+  return out;
 }
 
-function getProfiles() {
-  try {
-    const raw = localStorage.getItem(PROFILES_KEY);
-    const list = raw ? JSON.parse(raw) : [];
-    return Array.isArray(list) ? list : [];
-  } catch (e) {
-    return [];
+function householdCollection(sub) {
+  return collection(db, "households", familyCode, sub);
+}
+
+async function ensureDefaultCategories() {
+  const snap = await getDocs(householdCollection("categories"));
+  if (!snap.empty) return;
+  for (const [name, type] of DEFAULT_CATEGORIES) {
+    await addDoc(householdCollection("categories"), { name, type });
   }
 }
 
-function saveProfiles(list) {
-  localStorage.setItem(PROFILES_KEY, JSON.stringify(list));
-}
+function attachListeners() {
+  if (unsubTx) unsubTx();
+  if (unsubCat) unsubCat();
 
-function getActiveProfileName() {
-  return localStorage.getItem(ACTIVE_PROFILE_KEY);
-}
+  unsubTx = onSnapshot(householdCollection("transactions"), (snap) => {
+    txCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    refreshAll();
+  });
 
-function setActiveProfileName(name) {
-  localStorage.setItem(ACTIVE_PROFILE_KEY, name);
-}
-
-const SCHEMA_SQL = `
-  CREATE TABLE IF NOT EXISTS transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('income','expense')),
-    category TEXT NOT NULL,
-    amount REAL NOT NULL,
-    note TEXT DEFAULT ''
-  );
-  CREATE TABLE IF NOT EXISTS categories (
-    name TEXT NOT NULL,
-    type TEXT NOT NULL CHECK(type IN ('income','expense')),
-    PRIMARY KEY (name, type)
-  );
-  INSERT OR IGNORE INTO categories (name, type) VALUES
-    ('Makan', 'expense'),
-    ('Bensin/Transport', 'expense'),
-    ('Jajan', 'expense'),
-    ('Lainnya', 'expense'),
-    ('Gaji', 'income'),
-    ('Lainnya', 'income');
-`;
-
-let SQL, db;
-
-/* ---------- IndexedDB helpers (store the raw sqlite file) ---------- */
-
-function openIDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(IDB_STORE);
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+  unsubCat = onSnapshot(householdCollection("categories"), (snap) => {
+    catCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    refreshCategorySelectForForm();
+    refreshCategoryFilterOptions();
   });
 }
 
-async function loadDBBlob(profile) {
-  const idb = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = idb.transaction(IDB_STORE, "readonly");
-    const req = tx.objectStore(IDB_STORE).get(idbKeyFor(profile));
-    req.onsuccess = () => resolve(req.result || null);
-    req.onerror = () => reject(req.error);
+function detachListeners() {
+  if (unsubTx) unsubTx();
+  if (unsubCat) unsubCat();
+  unsubTx = null;
+  unsubCat = null;
+}
+
+/* ---------- Data access (Firestore) ---------- */
+
+async function addTransaction({ date, type, category, amount, note }) {
+  await addDoc(householdCollection("transactions"), {
+    date,
+    type,
+    category,
+    amount,
+    note: note || "",
+    createdAtMs: Date.now(),
   });
 }
 
-async function saveDBBlob(profile, uint8arr) {
-  const idb = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = idb.transaction(IDB_STORE, "readwrite");
-    tx.objectStore(IDB_STORE).put(uint8arr, idbKeyFor(profile));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+async function deleteTransactionById(id) {
+  await deleteDoc(doc(db, "households", familyCode, "transactions", id));
 }
 
-async function deleteDBBlob(profile) {
-  const idb = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = idb.transaction(IDB_STORE, "readwrite");
-    tx.objectStore(IDB_STORE).delete(idbKeyFor(profile));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function persist() {
-  const data = db.export();
-  await saveDBBlob(activeProfile, data);
-}
-
-/* ---------- DB bootstrap ---------- */
-
-async function ensureSqlJsLoaded() {
-  if (!SQL) SQL = await initSqlJs({ locateFile: (f) => SQL_WASM_BASE + f });
-}
-
-async function loadProfileDB(profile) {
-  await ensureSqlJsLoaded();
-  const existing = await loadDBBlob(profile);
-  if (existing) {
-    db = new SQL.Database(new Uint8Array(existing));
-    db.run(SCHEMA_SQL); // no-op if already present, fills gaps if file came from an older version
-  } else {
-    db = new SQL.Database();
-    db.run(SCHEMA_SQL);
-  }
-  activeProfile = profile;
-  await persist();
-}
-
-function queryAll(sql, params = []) {
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const rows = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  return rows;
-}
-
-function run(sql, params = []) {
-  db.run(sql, params);
-}
-
-/* ---------- Data access ---------- */
-
-function addTransaction({ date, type, category, amount, note }) {
-  run(
-    `INSERT INTO transactions (date, type, category, amount, note) VALUES (?,?,?,?,?)`,
-    [date, type, category, amount, note || ""]
-  );
-}
-
-function deleteTransaction(id) {
-  run(`DELETE FROM transactions WHERE id = ?`, [id]);
-}
-
-function addCategory(name, type) {
-  run(`INSERT OR IGNORE INTO categories (name, type) VALUES (?,?)`, [name, type]);
+async function addCategory(name, type) {
+  const exists = catCache.some((c) => c.name === name && c.type === type);
+  if (!exists) await addDoc(householdCollection("categories"), { name, type });
 }
 
 function getCategories(type) {
-  return queryAll(`SELECT name FROM categories WHERE type = ? ORDER BY name`, [type]).map(
-    (r) => r.name
-  );
+  return catCache
+    .filter((c) => c.type === type)
+    .map((c) => c.name)
+    .sort((a, b) => a.localeCompare(b));
 }
 
 function getAllCategoryNames() {
-  return queryAll(`SELECT DISTINCT name FROM categories ORDER BY name`).map((r) => r.name);
+  return [...new Set(catCache.map((c) => c.name))].sort((a, b) => a.localeCompare(b));
 }
 
-function getTransactions(filter) {
-  let sql = `SELECT * FROM transactions WHERE 1=1`;
-  const params = [];
-  if (filter.from) {
-    sql += ` AND date >= ?`;
-    params.push(filter.from);
-  }
-  if (filter.to) {
-    sql += ` AND date <= ?`;
-    params.push(filter.to);
-  }
+function getFilteredTransactions(filter) {
+  let rows = txCache.slice();
+  if (filter.from) rows = rows.filter((r) => r.date >= filter.from);
+  if (filter.to) rows = rows.filter((r) => r.date <= filter.to);
   if (filter.category && filter.category !== "all") {
-    sql += ` AND category = ?`;
-    params.push(filter.category);
+    rows = rows.filter((r) => r.category === filter.category);
   }
-  sql += ` ORDER BY date DESC, id DESC`;
-  return queryAll(sql, params);
+  rows.sort((a, b) => b.date.localeCompare(a.date) || (b.createdAtMs || 0) - (a.createdAtMs || 0));
+  return rows;
 }
 
-function monthlyTotals(months) {
-  // months: array of 'YYYY-MM' labels, oldest first
-  const rows = queryAll(
-    `SELECT strftime('%Y-%m', date) as ym, type, SUM(amount) as total
-     FROM transactions GROUP BY ym, type`
-  );
+function monthlyTotalsJS(months) {
   const map = {};
-  rows.forEach((r) => {
-    map[r.ym] = map[r.ym] || { income: 0, expense: 0 };
-    map[r.ym][r.type] = r.total;
+  txCache.forEach((r) => {
+    const ym = r.date.slice(0, 7);
+    const key = ym + "|" + r.type;
+    map[key] = (map[key] || 0) + r.amount;
   });
   return months.map((ym) => ({
     ym,
-    income: (map[ym] && map[ym].income) || 0,
-    expense: (map[ym] && map[ym].expense) || 0,
+    income: map[ym + "|income"] || 0,
+    expense: map[ym + "|expense"] || 0,
   }));
 }
 
@@ -234,10 +178,7 @@ function toISODate(d) {
 
 function monthLabel(ym) {
   const [y, m] = ym.split("-").map(Number);
-  const names = [
-    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-    "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
-  ];
+  const names = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
   return `${names[m - 1]} ${String(y).slice(2)}`;
 }
 
@@ -275,111 +216,6 @@ function getPresetRange(preset) {
   }
   if (preset === "all") return { from: null, to: null };
   return null; // custom
-}
-
-/* ---------- Profiles ---------- */
-
-function sanitizeProfileName(name) {
-  return name.trim().slice(0, 40);
-}
-
-function populateProfileSelect() {
-  const sel = document.getElementById("profileSelect");
-  const profiles = getProfiles();
-  sel.innerHTML =
-    profiles.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("") +
-    `<option value="__new__">+ Profil baru…</option>`;
-  sel.value = activeProfile;
-}
-
-async function switchToProfile(name) {
-  await loadProfileDB(name);
-  setActiveProfileName(name);
-  populateProfileSelect();
-  document.getElementById("txDate").value = toISODate(new Date());
-  refreshCategorySelectForForm();
-  refreshFilterUI();
-  refreshAll();
-}
-
-async function createNewProfile() {
-  const typed = await showPromptDialog({
-    title: "Profil baru",
-    message: "Masukkan nama profil (misal: nama Anda).",
-    placeholder: "Nama profil",
-  });
-  const name = sanitizeProfileName(typed || "");
-  if (!name) {
-    populateProfileSelect(); // revert the <select> back to the active profile
-    return;
-  }
-  const profiles = getProfiles();
-  if (profiles.includes(name)) {
-    toast("Nama profil itu sudah ada. Pilih dari daftar, atau pakai nama lain.", "error");
-    populateProfileSelect();
-    return;
-  }
-  profiles.push(name);
-  saveProfiles(profiles);
-  await switchToProfile(name);
-  toast(`Profil "${name}" dibuat.`, "success");
-}
-
-async function deleteActiveProfile() {
-  const profiles = getProfiles();
-  if (profiles.length <= 1) {
-    toast("Tidak bisa menghapus satu-satunya profil yang ada.", "error");
-    return;
-  }
-  const ok = await showConfirmDialog({
-    title: "Hapus profil?",
-    message: `Hapus profil "${activeProfile}" beserta semua transaksinya? Tindakan ini tidak bisa dibatalkan.`,
-    confirmText: "Hapus",
-    danger: true,
-  });
-  if (!ok) return;
-  const removed = activeProfile;
-  const remaining = profiles.filter((p) => p !== removed);
-  saveProfiles(remaining);
-  await deleteDBBlob(removed);
-  await switchToProfile(remaining[0]);
-  toast(`Profil "${removed}" dihapus.`, "success");
-}
-
-async function initProfiles() {
-  let profiles = getProfiles();
-  if (profiles.length === 0) {
-    const typed = await showPromptDialog({
-      title: "Selamat datang di CashDiary",
-      message: "Siapa nama profil pertama Anda?",
-      placeholder: "Nama profil",
-      defaultValue: "Utama",
-      confirmText: "Mulai",
-    });
-    const name = sanitizeProfileName(typed || "Utama");
-    profiles = [name || "Utama"];
-    saveProfiles(profiles);
-    setActiveProfileName(profiles[0]);
-  } else {
-    const saved = getActiveProfileName();
-    if (!saved || !profiles.includes(saved)) {
-      setActiveProfileName(profiles[0]);
-    }
-  }
-  activeProfile = getActiveProfileName();
-  await loadProfileDB(activeProfile);
-  populateProfileSelect();
-
-  document.getElementById("profileSelect").addEventListener("change", async (e) => {
-    const value = e.target.value;
-    if (value === "__new__") {
-      await createNewProfile();
-    } else {
-      await switchToProfile(value);
-    }
-  });
-
-  document.getElementById("deleteProfileBtn").addEventListener("click", deleteActiveProfile);
 }
 
 /* ---------- Theme ---------- */
@@ -429,7 +265,7 @@ function renderCharts() {
 
 function renderCategoryChart() {
   const filter = getActiveFilter();
-  const rows = getTransactions(filter).filter((r) => r.type === "expense");
+  const rows = getFilteredTransactions(filter).filter((r) => r.type === "expense");
   const totals = {};
   rows.forEach((r) => {
     totals[r.category] = (totals[r.category] || 0) + r.amount;
@@ -489,7 +325,7 @@ function renderCategoryChart() {
 
 function renderTrendChart() {
   const months = lastNMonths(6);
-  const data = monthlyTotals(months);
+  const data = monthlyTotalsJS(months);
   const labels = months.map(monthLabel);
 
   const textSecondary = cssVar("--text-secondary");
@@ -627,16 +463,15 @@ function renderTable(rows) {
 
   tbody.querySelectorAll(".row-delete").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.dataset.id);
+      const id = btn.dataset.id;
       const ok = await showConfirmDialog({
         title: "Hapus transaksi?",
-        message: "Transaksi ini akan dihapus permanen.",
+        message: "Transaksi ini akan dihapus permanen untuk semua yang pakai kode keluarga ini.",
         confirmText: "Hapus",
         danger: true,
       });
       if (!ok) return;
-      deleteTransaction(id);
-      await persist();
+      await deleteTransactionById(id);
       refreshAll();
       toast("Transaksi dihapus.", "success");
     });
@@ -645,14 +480,13 @@ function renderTable(rows) {
 
 function refreshAll() {
   const filter = getActiveFilter();
-  const rows = getTransactions(filter);
+  const rows = getFilteredTransactions(filter);
   renderSummary(rows);
   renderTable(rows);
   renderCharts();
-  refreshCategoryFilterOptions();
 }
 
-/* ---------- Export / Import ---------- */
+/* ---------- Export CSV ---------- */
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -665,17 +499,9 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-function exportSQLite() {
-  const data = db.export();
-  downloadBlob(
-    new Blob([data], { type: "application/x-sqlite3" }),
-    `catatan-keuangan-${activeProfile}-${toISODate(new Date())}.sqlite`
-  );
-}
-
 function exportCSV() {
-  const rows = getTransactions({});
-  const header = ["id", "date", "type", "category", "amount", "note"];
+  const rows = txCache.slice().sort((a, b) => b.date.localeCompare(a.date));
+  const header = ["date", "type", "category", "amount", "note"];
   const lines = [header.join(",")];
   rows.forEach((r) => {
     const vals = header.map((h) => {
@@ -687,36 +513,92 @@ function exportCSV() {
   });
   downloadBlob(
     new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }),
-    `catatan-keuangan-${activeProfile}-${toISODate(new Date())}.csv`
+    `cashdiary-${familyCode}-${toISODate(new Date())}.csv`
   );
 }
 
-async function importSQLiteFile(file) {
-  const buf = new Uint8Array(await file.arrayBuffer());
-  try {
-    const newDb = new SQL.Database(buf);
-    newDb.run(SCHEMA_SQL); // ensure tables exist even on an older/foreign file
-    db = newDb;
-    await persist();
-    refreshAll();
-    toast("Berhasil memuat data dari file .sqlite.", "success");
-  } catch (err) {
-    toast("Gagal membaca file ini sebagai database SQLite.", "error");
-    console.error(err);
-  }
+/* ---------- Family code gate ---------- */
+
+async function joinFamilyCode(code) {
+  familyCode = code.trim().toUpperCase();
+  localStorage.setItem(FAMILY_CODE_KEY, familyCode);
+
+  document.getElementById("codeGate").hidden = true;
+  document.getElementById("appMain").hidden = false;
+  document.getElementById("familyCodeDisplay").textContent = familyCode;
+
+  await ensureDefaultCategories();
+  attachListeners();
+
+  document.getElementById("txDate").value = toISODate(new Date());
+  refreshFilterUI();
+}
+
+function leaveFamilyCode() {
+  detachListeners();
+  localStorage.removeItem(FAMILY_CODE_KEY);
+  familyCode = null;
+  txCache = [];
+  catCache = [];
+
+  document.getElementById("appMain").hidden = true;
+  document.getElementById("codeGate").hidden = false;
+  document.getElementById("joinCodeInput").value = "";
 }
 
 /* ---------- Wiring ---------- */
 
 async function main() {
   initThemeToggle();
-  await initProfiles();
+  await signInAnonymously(auth);
 
-  document.getElementById("txDate").value = toISODate(new Date());
-  refreshCategorySelectForForm();
-  refreshCategoryFilterOptions();
-  refreshFilterUI();
-  refreshAll();
+  document.getElementById("createCodeBtn").addEventListener("click", async () => {
+    const code = generateFamilyCode();
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch (e) {
+      /* clipboard access may be blocked; user can still read/copy it from the dialog */
+    }
+    const ok = await showConfirmDialog({
+      title: "Kode keluarga baru dibuat",
+      message: `Kode Anda:\n\n${code}\n\n(sudah disalin ke clipboard)\n\nBagikan kode ini ke pasangan Anda supaya bisa gabung melihat data yang sama. Kode ini tidak bisa diubah lagi setelah dibuat.`,
+      confirmText: "Lanjut, mulai pakai",
+      cancelText: "Batal",
+    });
+    if (!ok) return;
+    await joinFamilyCode(code);
+    toast(`Kode keluarga "${code}" aktif.`, "success");
+  });
+
+  document.getElementById("joinCodeBtn").addEventListener("click", async () => {
+    const val = document.getElementById("joinCodeInput").value.trim();
+    if (!val) {
+      toast("Masukkan kode keluarga dulu.", "error");
+      return;
+    }
+    await joinFamilyCode(val);
+    toast(`Bergabung ke kode "${val.toUpperCase()}".`, "success");
+  });
+
+  document.getElementById("leaveCodeBtn").addEventListener("click", async () => {
+    const ok = await showConfirmDialog({
+      title: "Ganti kode keluarga?",
+      message: "Anda akan keluar dari kode ini di device ini. Untuk masuk lagi nanti, Anda perlu memasukkan kodenya lagi.",
+      confirmText: "Ganti",
+      danger: true,
+    });
+    if (!ok) return;
+    leaveFamilyCode();
+  });
+
+  document.getElementById("copyCodeBtn").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(familyCode);
+      toast("Kode disalin.", "success");
+    } catch (e) {
+      toast("Tidak bisa menyalin otomatis. Salin manual dari layar.", "error");
+    }
+  });
 
   document.querySelectorAll('input[name="type"]').forEach((el) => {
     el.addEventListener("change", refreshCategorySelectForForm);
@@ -745,26 +627,23 @@ async function main() {
     }
     if (newCategoryInput) {
       category = newCategoryInput;
-      addCategory(category, type);
+      await addCategory(category, type);
     }
 
-    addTransaction({ date, type, category, amount, note });
-    await persist();
+    await addTransaction({ date, type, category, amount, note });
 
     document.getElementById("txAmount").value = "";
     document.getElementById("txNote").value = "";
     document.getElementById("txNewCategory").value = "";
-    refreshCategorySelectForForm();
-    refreshAll();
   });
 
-  document.getElementById("exportDbBtn").addEventListener("click", exportSQLite);
   document.getElementById("exportCsvBtn").addEventListener("click", exportCSV);
-  document.getElementById("importDbInput").addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (file) importSQLiteFile(file);
-    e.target.value = "";
-  });
+
+  if (familyCode) {
+    await joinFamilyCode(familyCode);
+  } else {
+    document.getElementById("codeGate").hidden = false;
+  }
 }
 
 main().catch((err) => {

@@ -114,9 +114,66 @@ body {
   color: var(--text-secondary);
 }
 
-#profileSelect {
-  min-width: 140px;
+.family-code-chip {
+  background: var(--page-plane);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  font-weight: 600;
 }
+
+/* ---------- Code gate (entry screen) ---------- */
+
+.code-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--page-plane);
+}
+
+.code-gate-card {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+
+.code-gate-card h1 {
+  margin: 0 0 4px;
+}
+
+.code-gate-card .field {
+  text-align: left;
+  margin: 18px 0 12px;
+}
+
+.code-gate-card .btn-primary,
+.code-gate-card .btn-ghost {
+  width: 100%;
+}
+
+.code-gate-divider {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  margin: 16px 0;
+  position: relative;
+}
+
+.code-gate-divider::before,
+.code-gate-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 40%;
+  height: 1px;
+  background: var(--gridline);
+}
+
+.code-gate-divider::before { left: 0; }
+.code-gate-divider::after { right: 0; }
 
 .card {
   background: var(--surface-1);
@@ -453,6 +510,7 @@ td.col-amount {
   margin: 0 0 16px;
   color: var(--text-secondary);
   font-size: 0.9rem;
+  white-space: pre-line;
 }
 
 .modal-input {

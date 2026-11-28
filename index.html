@@ -12,7 +12,26 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div class="app">
+
+<!-- Gerbang kode keluarga: tampil sebelum masuk ke aplikasi utama -->
+<div id="codeGate" class="code-gate" hidden>
+  <div class="card code-gate-card">
+    <h1>CashDiary</h1>
+    <p class="subtitle">Catatan keuangan keluarga, sinkron real-time.</p>
+
+    <div class="field">
+      <label for="joinCodeInput">Sudah punya kode keluarga?</label>
+      <input type="text" id="joinCodeInput" placeholder="Misal: 7K9QXZAB" autocomplete="off" />
+    </div>
+    <button id="joinCodeBtn" class="btn-primary">Gabung / Masuk</button>
+
+    <div class="code-gate-divider">atau</div>
+
+    <button id="createCodeBtn" class="btn-ghost">Buat kode keluarga baru</button>
+  </div>
+</div>
+
+<div class="app" id="appMain" hidden>
 
   <header class="app-header">
     <div>
@@ -23,9 +42,10 @@
   </header>
 
   <section class="profile-bar">
-    <label for="profileSelect" class="profile-label">Profil</label>
-    <select id="profileSelect"></select>
-    <button id="deleteProfileBtn" class="btn-ghost" title="Hapus profil ini">Hapus profil</button>
+    <span class="profile-label">Kode Keluarga</span>
+    <code id="familyCodeDisplay" class="family-code-chip"></code>
+    <button id="copyCodeBtn" class="btn-ghost" title="Salin kode">Salin</button>
+    <button id="leaveCodeBtn" class="btn-ghost" title="Ganti kode keluarga">Ganti kode</button>
   </section>
 
   <section class="summary-cards" id="summaryCards">
@@ -140,11 +160,6 @@
       <h2>Daftar Transaksi</h2>
       <div class="list-actions">
         <button id="exportCsvBtn" class="btn-ghost">Export CSV</button>
-        <button id="exportDbBtn" class="btn-ghost">Export .sqlite</button>
-        <label class="btn-ghost file-label">
-          Import .sqlite
-          <input type="file" id="importDbInput" accept=".sqlite,.db" hidden />
-        </label>
       </div>
     </div>
     <div class="table-wrap">
@@ -166,13 +181,12 @@
   </section>
 
   <footer class="app-footer">
-    <p>Data tersimpan di browser ini (IndexedDB). Gunakan Export/Import untuk backup atau pindah device.</p>
+    <p>Data tersimpan online (Firebase), sinkron real-time untuk semua yang pakai kode keluarga yang sama.</p>
   </footer>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="ui.js"></script>
-<script src="script.js"></script>
+<script type="module" src="script.js"></script>
 </body>
 </html>
