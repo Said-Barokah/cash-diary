@@ -68,6 +68,13 @@
 
 * { box-sizing: border-box; }
 
+/* Pastikan atribut [hidden] selalu menang dari display:flex milik .app/.code-gate,
+   supaya kedua layar tidak pernah tampil bersamaan. */
+.app[hidden],
+.code-gate[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
